@@ -4,7 +4,6 @@ package gorocksdb
 // #include "rocksdb/c.h"
 import "C"
 import (
-	"errors"
 	"unsafe"
 )
 
@@ -82,21 +81,21 @@ type BackupEngine struct {
 }
 
 // OpenBackupEngine opens a backup engine with specified options.
-func OpenBackupEngine(opts *Options, path string) (*BackupEngine, error) {
-	var cErr *C.char
+func OpenBackupEngine(opts *Options, path string) (be *BackupEngine, err error) {
 	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
 
-	be := C.rocksdb_backup_engine_open(opts.c, cpath, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	var cErr *C.char
+	bEngine := C.rocksdb_backup_engine_open(opts.c, cpath, &cErr)
+	if err = fromCError(cErr); err == nil {
+		be = &BackupEngine{
+			c:    bEngine,
+			path: path,
+			opts: opts,
+		}
 	}
-	return &BackupEngine{
-		c:    be,
-		path: path,
-		opts: opts,
-	}, nil
+
+	C.free(unsafe.Pointer(cpath))
+	return
 }
 
 // UnsafeGetBackupEngine returns the underlying c backup engine.
@@ -105,16 +104,36 @@ func (b *BackupEngine) UnsafeGetBackupEngine() unsafe.Pointer {
 }
 
 // CreateNewBackup takes a new backup from db.
-func (b *BackupEngine) CreateNewBackup(db *DB) error {
+func (b *BackupEngine) CreateNewBackup(db *DB) (err error) {
 	var cErr *C.char
-
 	C.rocksdb_backup_engine_create_new_backup(b.c, db.c, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
+	err = fromCError(cErr)
+	return
+}
 
-	return nil
+// CreateNewBackupFlush takes a new backup from db.
+// Backup would be created after flushing.
+func (b *BackupEngine) CreateNewBackupFlush(db *DB, flushBeforeBackup bool) (err error) {
+	var cErr *C.char
+	C.rocksdb_backup_engine_create_new_backup_flush(b.c, db.c, boolToChar(flushBeforeBackup), &cErr)
+	err = fromCError(cErr)
+	return
+}
+
+// PurgeOldBackups deletes old backups, where `numBackupsToKeep` is how many backups you’d like to keep.
+func (b *BackupEngine) PurgeOldBackups(numBackupsToKeep uint32) (err error) {
+	var cErr *C.char
+	C.rocksdb_backup_engine_purge_old_backups(b.c, C.uint32_t(numBackupsToKeep), &cErr)
+	err = fromCError(cErr)
+	return
+}
+
+// VerifyBackup verifies a backup by its id.
+func (b *BackupEngine) VerifyBackup(backupID uint32) (err error) {
+	var cErr *C.char
+	C.rocksdb_backup_engine_verify_backup(b.c, C.uint32_t(backupID), &cErr)
+	err = fromCError(cErr)
+	return
 }
 
 // GetInfo gets an object that gives information about
@@ -127,21 +146,17 @@ func (b *BackupEngine) GetInfo() *BackupEngineInfo {
 
 // RestoreDBFromLatestBackup restores the latest backup to dbDir. walDir
 // is where the write ahead logs are restored to and usually the same as dbDir.
-func (b *BackupEngine) RestoreDBFromLatestBackup(dbDir, walDir string, ro *RestoreOptions) error {
-	var cErr *C.char
+func (b *BackupEngine) RestoreDBFromLatestBackup(dbDir, walDir string, ro *RestoreOptions) (err error) {
 	cDbDir := C.CString(dbDir)
 	cWalDir := C.CString(walDir)
-	defer func() {
-		C.free(unsafe.Pointer(cDbDir))
-		C.free(unsafe.Pointer(cWalDir))
-	}()
 
+	var cErr *C.char
 	C.rocksdb_backup_engine_restore_db_from_latest_backup(b.c, cDbDir, cWalDir, ro.c, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	C.free(unsafe.Pointer(cDbDir))
+	C.free(unsafe.Pointer(cWalDir))
+	return
 }
 
 // Close close the backup engine and cleans up state

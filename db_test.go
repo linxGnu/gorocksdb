@@ -34,6 +34,11 @@ func TestDBCRUD(t *testing.T) {
 	ensure.Nil(t, err)
 	ensure.DeepEqual(t, v1.Data(), givenVal1)
 
+	// retrieve bytes
+	_v1, err := db.GetBytes(ro, givenKey)
+	ensure.Nil(t, err)
+	ensure.DeepEqual(t, _v1, givenVal1)
+
 	// update
 	ensure.Nil(t, db.Put(wo, givenKey, givenVal2))
 	v2, err := db.Get(ro, givenKey)

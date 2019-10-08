@@ -4,7 +4,6 @@ package gorocksdb
 // #include "gorocksdb.h"
 import "C"
 import (
-	"errors"
 	"unsafe"
 )
 
@@ -96,26 +95,29 @@ func NewNativeOptions(c *C.rocksdb_options_t) *Options {
 
 // GetOptionsFromString creates a Options object from existing opt and string.
 // If base is nil, a default opt create by NewDefaultOptions will be used as base opt.
-func GetOptionsFromString(base *Options, optStr string) (*Options, error) {
-	if base == nil {
+func GetOptionsFromString(base *Options, optStr string) (newOpt *Options, err error) {
+	providedBaseNil := base == nil
+	if providedBaseNil {
 		base = NewDefaultOptions()
-		defer base.Destroy()
 	}
 
 	var (
 		cErr    *C.char
 		cOptStr = C.CString(optStr)
 	)
-	defer C.free(unsafe.Pointer(cOptStr))
 
-	newOpt := NewDefaultOptions()
+	newOpt = NewDefaultOptions()
 	C.rocksdb_get_options_from_string(base.c, cOptStr, newOpt.c, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err != nil {
+		newOpt.Destroy()
 	}
 
-	return newOpt, nil
+	C.free(unsafe.Pointer(cOptStr))
+	if providedBaseNil {
+		base.Destroy()
+	}
+
+	return
 }
 
 // -------------------
@@ -663,8 +665,8 @@ func (opts *Options) SetUseFsync(value bool) {
 // Default: empty
 func (opts *Options) SetDbLogDir(value string) {
 	cvalue := C.CString(value)
-	defer C.free(unsafe.Pointer(cvalue))
 	C.rocksdb_options_set_db_log_dir(opts.c, cvalue)
+	C.free(unsafe.Pointer(cvalue))
 }
 
 // SetWalDir specifies the absolute dir path for write-ahead logs (WAL).
@@ -675,8 +677,8 @@ func (opts *Options) SetDbLogDir(value string) {
 // Default: empty
 func (opts *Options) SetWalDir(value string) {
 	cvalue := C.CString(value)
-	defer C.free(unsafe.Pointer(cvalue))
 	C.rocksdb_options_set_wal_dir(opts.c, cvalue)
+	C.free(unsafe.Pointer(cvalue))
 }
 
 // SetDeleteObsoleteFilesPeriodMicros sets the periodicity
@@ -989,10 +991,11 @@ func (opts *Options) SetFIFOCompactionOptions(value *FIFOCompactionOptions) {
 }
 
 // GetStatisticsString returns the statistics as a string.
-func (opts *Options) GetStatisticsString() string {
+func (opts *Options) GetStatisticsString() (stats string) {
 	sString := C.rocksdb_options_statistics_get_string(opts.c)
-	defer C.rocksdb_free(unsafe.Pointer(sString))
-	return C.GoString(sString)
+	stats = C.GoString(sString)
+	C.rocksdb_free(unsafe.Pointer(sString))
+	return
 }
 
 // SetRateLimiter sets the rate limiter of the options.

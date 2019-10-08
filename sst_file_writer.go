@@ -5,7 +5,6 @@ package gorocksdb
 import "C"
 
 import (
-	"errors"
 	"unsafe"
 )
 
@@ -22,43 +21,36 @@ func NewSSTFileWriter(opts *EnvOptions, dbOpts *Options) *SSTFileWriter {
 }
 
 // Open prepares SstFileWriter to write into file located at "path".
-func (w *SSTFileWriter) Open(path string) error {
+func (w *SSTFileWriter) Open(path string) (err error) {
 	var (
 		cErr  *C.char
 		cPath = C.CString(path)
 	)
-	defer C.free(unsafe.Pointer(cPath))
+
 	C.rocksdb_sstfilewriter_open(w.c, cPath, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	C.free(unsafe.Pointer(cPath))
+	return
 }
 
 // Add adds key, value to currently opened file.
 // REQUIRES: key is after any previously added key according to comparator.
-func (w *SSTFileWriter) Add(key, value []byte) error {
+func (w *SSTFileWriter) Add(key, value []byte) (err error) {
 	cKey := byteToChar(key)
 	cValue := byteToChar(value)
 	var cErr *C.char
 	C.rocksdb_sstfilewriter_add(w.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)), &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+	return
 }
 
 // Finish finishes writing to sst file and close file.
-func (w *SSTFileWriter) Finish() error {
+func (w *SSTFileWriter) Finish() (err error) {
 	var cErr *C.char
 	C.rocksdb_sstfilewriter_finish(w.c, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+	return
 }
 
 // Destroy destroys the SSTFileWriter object.

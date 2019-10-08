@@ -12,10 +12,11 @@ type DBPath struct {
 
 // NewDBPath creates a DBPath object
 // with the given path and target_size.
-func NewDBPath(path string, target_size uint64) *DBPath {
+func NewDBPath(path string, target_size uint64) (dbPath *DBPath) {
 	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-	return NewNativeDBPath(C.rocksdb_dbpath_create(cpath, C.uint64_t(target_size)))
+	dbPath = NewNativeDBPath(C.rocksdb_dbpath_create(cpath, C.uint64_t(target_size)))
+	C.free(unsafe.Pointer(cpath))
+	return
 }
 
 // NewNativeDBPath creates a DBPath object.

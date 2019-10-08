@@ -20,47 +20,37 @@ func NewNativeTransaction(c *C.rocksdb_transaction_t) *Transaction {
 }
 
 // Commit commits the transaction to the database.
-func (transaction *Transaction) Commit() error {
-	var (
-		cErr *C.char
-	)
+func (transaction *Transaction) Commit() (err error) {
+	var cErr *C.char
 	C.rocksdb_transaction_commit(transaction.c, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+	return
 }
 
 // Rollback performs a rollback on the transaction.
-func (transaction *Transaction) Rollback() error {
-	var (
-		cErr *C.char
-	)
+func (transaction *Transaction) Rollback() (err error) {
+	var cErr *C.char
 	C.rocksdb_transaction_rollback(transaction.c, &cErr)
-
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+	return
 }
 
 // Get returns the data associated with the key from the database given this transaction.
-func (transaction *Transaction) Get(opts *ReadOptions, key []byte) (*Slice, error) {
+func (transaction *Transaction) Get(opts *ReadOptions, key []byte) (slice *Slice, err error) {
 	var (
 		cErr    *C.char
 		cValLen C.size_t
 		cKey    = byteToChar(key)
 	)
+
 	cValue := C.rocksdb_transaction_get(
 		transaction.c, opts.c, cKey, C.size_t(len(key)), &cValLen, &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err == nil {
+		slice = NewSlice(cValue, cValLen)
 	}
-	return NewSlice(cValue, cValLen), nil
+
+	return
 }
 
 // GetForUpdate queries the data associated with the key and puts an exclusive lock on the key from the database given this transaction.

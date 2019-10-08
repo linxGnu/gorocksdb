@@ -23,16 +23,17 @@ func NewCOWList() *COWList {
 }
 
 // Append appends an item to the COWList and returns the index for that item.
-func (c *COWList) Append(i interface{}) int {
+func (c *COWList) Append(i interface{}) (index int) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	list := c.v.Load().([]interface{})
 	newLen := len(list) + 1
 	newList := make([]interface{}, newLen)
 	copy(newList, list)
 	newList[newLen-1] = i
 	c.v.Store(newList)
-	return newLen - 1
+	c.mu.Unlock()
+	index = newLen - 1
+	return
 }
 
 // Get gets the item at index.

@@ -1,9 +1,10 @@
 package gorocksdb
 
 // #include <stdlib.h>
-
+// #include "rocksdb/c.h"
 import "C"
 import (
+	"errors"
 	"reflect"
 	"unsafe"
 )
@@ -71,4 +72,13 @@ func sizeSlice(data *C.size_t, len C.int) []C.size_t {
 	sH := (*reflect.SliceHeader)(unsafe.Pointer(&value))
 	sH.Cap, sH.Len, sH.Data = int(len), int(len), uintptr(unsafe.Pointer(data))
 	return value
+}
+
+// fromCError returns go error and free c_err if need.
+func fromCError(cErr *C.char) (err error) {
+	if cErr != nil {
+		err = errors.New(C.GoString(cErr))
+		C.rocksdb_free(unsafe.Pointer(cErr))
+	}
+	return
 }
