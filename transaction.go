@@ -5,7 +5,6 @@ package gorocksdb
 import "C"
 
 import (
-	"errors"
 	"unsafe"
 )
 
@@ -54,51 +53,50 @@ func (transaction *Transaction) Get(opts *ReadOptions, key []byte) (slice *Slice
 }
 
 // GetForUpdate queries the data associated with the key and puts an exclusive lock on the key from the database given this transaction.
-func (transaction *Transaction) GetForUpdate(opts *ReadOptions, key []byte) (*Slice, error) {
+func (transaction *Transaction) GetForUpdate(opts *ReadOptions, key []byte) (slice *Slice, err error) {
 	var (
 		cErr    *C.char
 		cValLen C.size_t
 		cKey    = byteToChar(key)
 	)
+
 	cValue := C.rocksdb_transaction_get_for_update(
 		transaction.c, opts.c, cKey, C.size_t(len(key)), &cValLen, C.uchar(byte(1)) /*exclusive*/, &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err == nil {
+		slice = NewSlice(cValue, cValLen)
 	}
-	return NewSlice(cValue, cValLen), nil
+
+	return
 }
 
 // Put writes data associated with a key to the transaction.
-func (transaction *Transaction) Put(key, value []byte) error {
+func (transaction *Transaction) Put(key, value []byte) (err error) {
 	var (
 		cErr   *C.char
 		cKey   = byteToChar(key)
 		cValue = byteToChar(value)
 	)
+
 	C.rocksdb_transaction_put(
 		transaction.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)), &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	return
 }
 
 // Delete removes the data associated with the key from the transaction.
-func (transaction *Transaction) Delete(key []byte) error {
+func (transaction *Transaction) Delete(key []byte) (err error) {
 	var (
 		cErr *C.char
 		cKey = byteToChar(key)
 	)
+
 	C.rocksdb_transaction_delete(transaction.c, cKey, C.size_t(len(key)), &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	return
 }
 
 // NewIterator returns an Iterator over the database that uses the

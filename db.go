@@ -4,9 +4,13 @@ package gorocksdb
 // #include "rocksdb/c.h"
 import "C"
 import (
-	"errors"
 	"fmt"
 	"unsafe"
+)
+
+var (
+	// ErrColumnFamilyMustMatch indicates number of column family names and options must match.
+	ErrColumnFamilyMustMatch = fmt.Errorf("Must provide the same number of column family names and options")
 )
 
 // Range is a range of keys in the database. GetApproximateSizes calls with it
@@ -124,7 +128,8 @@ func OpenDbColumnFamilies(
 ) (db *DB, cfHandles []*ColumnFamilyHandle, err error) {
 	numColumnFamilies := len(cfNames)
 	if numColumnFamilies != len(cfOpts) {
-		return nil, nil, errors.New("must provide the same number of column family names and options")
+		err = ErrColumnFamilyMustMatch
+		return
 	}
 
 	cName := C.CString(name)
@@ -180,7 +185,8 @@ func OpenDbForReadOnlyColumnFamilies(
 ) (db *DB, cfHandles []*ColumnFamilyHandle, err error) {
 	numColumnFamilies := len(cfNames)
 	if numColumnFamilies != len(cfOpts) {
-		return nil, nil, errors.New("must provide the same number of column family names and options")
+		err = ErrColumnFamilyMustMatch
+		return
 	}
 
 	cName := C.CString(name)
@@ -925,31 +931,29 @@ func (db *DB) Close() {
 
 // DestroyDb removes a database entirely, removing everything from the
 // filesystem.
-func DestroyDb(name string, opts *Options) error {
+func DestroyDb(name string, opts *Options) (err error) {
 	var (
 		cErr  *C.char
 		cName = C.CString(name)
 	)
-	defer C.free(unsafe.Pointer(cName))
+
 	C.rocksdb_destroy_db(opts.c, cName, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	C.free(unsafe.Pointer(cName))
+	return
 }
 
 // RepairDb repairs a database.
-func RepairDb(name string, opts *Options) error {
+func RepairDb(name string, opts *Options) (err error) {
 	var (
 		cErr  *C.char
 		cName = C.CString(name)
 	)
-	defer C.free(unsafe.Pointer(cName))
+
 	C.rocksdb_repair_db(opts.c, cName, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	C.free(unsafe.Pointer(cName))
+	return
 }

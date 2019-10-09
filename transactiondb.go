@@ -4,7 +4,6 @@ package gorocksdb
 // #include "rocksdb/c.h"
 import "C"
 import (
-	"errors"
 	"unsafe"
 )
 
@@ -21,24 +20,25 @@ func OpenTransactionDb(
 	opts *Options,
 	transactionDBOpts *TransactionDBOptions,
 	name string,
-) (*TransactionDB, error) {
+) (tdb *TransactionDB, err error) {
 	var (
 		cErr  *C.char
 		cName = C.CString(name)
 	)
-	defer C.free(unsafe.Pointer(cName))
+
 	db := C.rocksdb_transactiondb_open(
 		opts.c, transactionDBOpts.c, cName, &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err == nil {
+		tdb = &TransactionDB{
+			name:              name,
+			c:                 db,
+			opts:              opts,
+			transactionDBOpts: transactionDBOpts,
+		}
 	}
-	return &TransactionDB{
-		name:              name,
-		c:                 db,
-		opts:              opts,
-		transactionDBOpts: transactionDBOpts,
-	}, nil
+
+	C.free(unsafe.Pointer(cName))
+	return
 }
 
 // NewSnapshot creates a new snapshot of the database.
@@ -73,67 +73,64 @@ func (db *TransactionDB) TransactionBegin(
 }
 
 // Get returns the data associated with the key from the database.
-func (db *TransactionDB) Get(opts *ReadOptions, key []byte) (*Slice, error) {
+func (db *TransactionDB) Get(opts *ReadOptions, key []byte) (slice *Slice, err error) {
 	var (
 		cErr    *C.char
 		cValLen C.size_t
 		cKey    = byteToChar(key)
 	)
+
 	cValue := C.rocksdb_transactiondb_get(
 		db.c, opts.c, cKey, C.size_t(len(key)), &cValLen, &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err == nil {
+		slice = NewSlice(cValue, cValLen)
 	}
-	return NewSlice(cValue, cValLen), nil
+
+	return
 }
 
 // Put writes data associated with a key to the database.
-func (db *TransactionDB) Put(opts *WriteOptions, key, value []byte) error {
+func (db *TransactionDB) Put(opts *WriteOptions, key, value []byte) (err error) {
 	var (
 		cErr   *C.char
 		cKey   = byteToChar(key)
 		cValue = byteToChar(value)
 	)
+
 	C.rocksdb_transactiondb_put(
 		db.c, opts.c, cKey, C.size_t(len(key)), cValue, C.size_t(len(value)), &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	return
 }
 
 // Delete removes the data associated with the key from the database.
-func (db *TransactionDB) Delete(opts *WriteOptions, key []byte) error {
+func (db *TransactionDB) Delete(opts *WriteOptions, key []byte) (err error) {
 	var (
 		cErr *C.char
 		cKey = byteToChar(key)
 	)
+
 	C.rocksdb_transactiondb_delete(db.c, opts.c, cKey, C.size_t(len(key)), &cErr)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return errors.New(C.GoString(cErr))
-	}
-	return nil
+	err = fromCError(cErr)
+
+	return
 }
 
 // NewCheckpoint creates a new Checkpoint for this db.
-func (db *TransactionDB) NewCheckpoint() (*Checkpoint, error) {
-	var (
-		cErr *C.char
-	)
+func (db *TransactionDB) NewCheckpoint() (cp *Checkpoint, err error) {
+	var cErr *C.char
+
 	cCheckpoint := C.rocksdb_transactiondb_checkpoint_object_create(
 		db.c, &cErr,
 	)
-	if cErr != nil {
-		defer C.rocksdb_free(unsafe.Pointer(cErr))
-		return nil, errors.New(C.GoString(cErr))
+	if err = fromCError(cErr); err == nil {
+		cp = NewNativeCheckpoint(cCheckpoint)
 	}
 
-	return NewNativeCheckpoint(cCheckpoint), nil
+	return
 }
 
 // Close closes the database.
